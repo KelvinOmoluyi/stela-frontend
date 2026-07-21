@@ -56,7 +56,7 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
           <input
             id="email"
             type="email"
-            placeholder="admin@stela.com"
+            placeholder="example@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
