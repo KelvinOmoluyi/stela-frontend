@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { LogIn, LogOut, Plus, Trash2, Send, BookOpen } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from './firebase';
 import './App.css'; // Just keeping it in case, but index.css has the main styles
 
 interface Chapter {
   number: number;
   title: string;
+  imageInputType: 'file' | 'url';
   imageUrl: string;
+  imageFile: File | null;
   content: string;
 }
 
@@ -16,7 +20,9 @@ interface StoryMetadata {
   description: string;
   ageMin: string;
   ageMax: string;
+  coverInputType: 'file' | 'url';
   coverImage: string;
+  coverImageFile: File | null;
 }
 
 export default function App() {
@@ -92,11 +98,15 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
     description: '',
     ageMin: '',
     ageMax: '',
-    coverImage: ''
+    coverInputType: 'file',
+    coverImage: '',
+    coverImageFile: null
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [chapters, setChapters] = useState<Chapter[]>([
-    { number: 1, title: '', imageUrl: '', content: '' }
+    { number: 1, title: '', imageInputType: 'file', imageUrl: '', imageFile: null, content: '' }
   ]);
 
   const handleMetadataChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -104,7 +114,7 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
     setMetadata(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleChapterChange = (index: number, field: keyof Chapter, value: string) => {
+  const handleChapterChange = (index: number, field: keyof Chapter, value: any) => {
     setChapters(prev => {
       const newChapters = [...prev];
       newChapters[index] = { ...newChapters[index], [field]: value };
@@ -115,7 +125,7 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
   const addChapter = () => {
     setChapters(prev => [
       ...prev,
-      { number: prev.length + 1, title: '', imageUrl: '', content: '' }
+      { number: prev.length + 1, title: '', imageInputType: 'file', imageUrl: '', imageFile: null, content: '' }
     ]);
   };
 
@@ -129,17 +139,75 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const uploadFile = async (file: File, path: string): Promise<string> => {
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
-      ...metadata,
-      readingTime: parseInt(metadata.readingTime) || 0,
-      ageMin: parseInt(metadata.ageMin) || 0,
-      ageMax: parseInt(metadata.ageMax) || 0,
-      chapters
-    };
-    console.log('Story Submission Payload:', JSON.stringify(payload, null, 2));
-    alert('Story submitted successfully! Check console for JSON payload.');
+    setIsSubmitting(true);
+    
+    try {
+      // 1. Handle Main Cover Upload
+      let finalCoverUrl = metadata.coverImage;
+      if (metadata.coverInputType === 'file' && metadata.coverImageFile) {
+        finalCoverUrl = await uploadFile(
+          metadata.coverImageFile, 
+          `covers/${Date.now()}_${metadata.coverImageFile.name}`
+        );
+      }
+
+      // 2. Handle Chapter Image Uploads
+      const processedChapters = await Promise.all(chapters.map(async (chapter, idx) => {
+        let finalImageUrl = chapter.imageUrl;
+        if (chapter.imageInputType === 'file' && chapter.imageFile) {
+          finalImageUrl = await uploadFile(
+            chapter.imageFile,
+            `chapters/${Date.now()}_${idx}_${chapter.imageFile.name}`
+          );
+        }
+        
+        return {
+          number: chapter.number,
+          title: chapter.title,
+          imageUrl: finalImageUrl,
+          content: chapter.content
+        };
+      }));
+
+      // 3. Final Payload
+      const payload = {
+        title: metadata.title,
+        genre: metadata.genre,
+        description: metadata.description,
+        coverImage: finalCoverUrl,
+        readingTime: parseInt(metadata.readingTime) || 0,
+        ageMin: parseInt(metadata.ageMin) || 0,
+        ageMax: parseInt(metadata.ageMax) || 0,
+        chapters: processedChapters
+      };
+
+      console.log('Story Submission Payload:', JSON.stringify(payload, null, 2));
+
+      // 4. API Call
+      /* 
+      const response = await fetch('/api/stories/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error('Failed to submit story');
+      */
+      
+      alert('Story submitted successfully! Check console for JSON payload.');
+    } catch (error) {
+      console.error('Error submitting story:', error);
+      alert('Failed to submit story. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -252,15 +320,40 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="coverImage">Main Cover Image URL (Optional)</label>
-            <input
-              id="coverImage"
-              name="coverImage"
-              type="url"
-              placeholder="https://example.com/image.jpg"
-              value={metadata.coverImage}
-              onChange={handleMetadataChange}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ margin: 0 }}>Main Cover Image (Optional)</label>
+              <div className="image-toggle">
+                <button 
+                  type="button" 
+                  className={metadata.coverInputType === 'file' ? 'active' : ''} 
+                  onClick={() => setMetadata(prev => ({ ...prev, coverInputType: 'file' }))}
+                >Attach</button>
+                <button 
+                  type="button" 
+                  className={metadata.coverInputType === 'url' ? 'active' : ''} 
+                  onClick={() => setMetadata(prev => ({ ...prev, coverInputType: 'url' }))}
+                >URL</button>
+              </div>
+            </div>
+            
+            {metadata.coverInputType === 'file' ? (
+              <input
+                type="file"
+                className="file-input"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files ? e.target.files[0] : null;
+                  setMetadata(prev => ({ ...prev, coverImageFile: file }));
+                }}
+              />
+            ) : (
+              <input
+                type="url"
+                placeholder="https://example.com/image.jpg"
+                value={metadata.coverImage}
+                onChange={(e) => setMetadata(prev => ({ ...prev, coverImage: e.target.value }))}
+              />
+            )}
           </div>
         </div>
 
@@ -297,13 +390,40 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
               </div>
 
               <div className="form-group">
-                <label>Chapter Image URL (Optional)</label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/chapter-img.jpg"
-                  value={chapter.imageUrl}
-                  onChange={(e) => handleChapterChange(index, 'imageUrl', e.target.value)}
-                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ margin: 0 }}>Chapter Image (Optional)</label>
+                  <div className="image-toggle">
+                    <button 
+                      type="button" 
+                      className={chapter.imageInputType === 'file' ? 'active' : ''} 
+                      onClick={() => handleChapterChange(index, 'imageInputType', 'file')}
+                    >Attach</button>
+                    <button 
+                      type="button" 
+                      className={chapter.imageInputType === 'url' ? 'active' : ''} 
+                      onClick={() => handleChapterChange(index, 'imageInputType', 'url')}
+                    >URL</button>
+                  </div>
+                </div>
+                
+                {chapter.imageInputType === 'file' ? (
+                  <input
+                    type="file"
+                    className="file-input"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files ? e.target.files[0] : null;
+                      handleChapterChange(index, 'imageFile', file);
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    placeholder="https://example.com/chapter-img.jpg"
+                    value={chapter.imageUrl}
+                    onChange={(e) => handleChapterChange(index, 'imageUrl', e.target.value)}
+                  />
+                )}
               </div>
 
               <div className="form-group">
@@ -329,9 +449,9 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
 
         {/* Submit Section */}
         <div className="submit-container">
-          <button type="submit" className="btn btn-primary">
+          <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
             <Send size={20} />
-            Submit Story
+            {isSubmitting ? 'Submitting...' : 'Submit Story'}
           </button>
         </div>
       </form>
