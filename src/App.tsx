@@ -192,7 +192,7 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
         }
         
         return {
-          number: chapter.number,
+          chapterNumber: chapter.number,
           title: chapter.title,
           imageUrl: finalImageUrl,
           content: chapter.content
@@ -234,6 +234,22 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
         const errData = await response.json().catch(() => null);
         throw new Error(errData?.message || 'Failed to submit story to the backend.');
       }
+      
+      // Reset form state on success
+      setMetadata({
+        title: '',
+        genre: 'contemporary',
+        readingTime: '',
+        description: '',
+        ageMin: '',
+        ageMax: '',
+        coverInputType: 'file',
+        coverImage: '',
+        coverImageFile: null
+      });
+      setChapters([
+        { number: 1, title: '', imageInputType: 'file', imageUrl: '', imageFile: null, content: '' }
+      ]);
       
       setModalState({
         isOpen: true,
