@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { LogIn, LogOut, Plus, Trash2, Send, BookOpen } from 'lucide-react';
+import { LogIn, LogOut, Plus, Trash2, Send, BookOpen, CheckCircle, XCircle } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from './firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { storage, auth } from './firebase';
 import './App.css'; // Just keeping it in case, but index.css has the main styles
 
 interface Chapter {
@@ -42,11 +43,23 @@ export default function App() {
 function LoginView({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email && password) {
-      onLogin();
+      setIsLoading(true);
+      setError('');
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        onLogin();
+      } catch (err: any) {
+        console.error('Login error:', err);
+        setError('Invalid email or password. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -79,10 +92,13 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
             required
           />
         </div>
+        
+        {error && <div style={{ color: '#e74c3c', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
+        
         <div className="login-btn-container">
-          <button type="submit" className="btn btn-primary">
+          <button type="submit" className="btn btn-primary" disabled={isLoading}>
             <LogIn size={20} />
-            Log In
+            {isLoading ? 'Logging In...' : 'Log In'}
           </button>
         </div>
       </form>
@@ -91,6 +107,12 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
 }
 
 function DashboardView({ onLogout }: { onLogout: () => void }) {
+  const [modalState, setModalState] = useState<{ isOpen: boolean, type: 'success' | 'error', message: string }>({
+    isOpen: false,
+    type: 'success',
+    message: ''
+  });
+
   const [metadata, setMetadata] = useState<StoryMetadata>({
     title: '',
     genre: 'contemporary',
@@ -192,19 +214,39 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
       console.log('Story Submission Payload:', JSON.stringify(payload, null, 2));
 
       // 4. API Call
-      /* 
-      const response = await fetch('/api/stories/submit', {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('You must be logged in to submit a story.');
+      }
+      const token = await user.getIdToken();
+      
+      const response = await fetch('https://api-f6x7qpormq-uc.a.run.app/api/stories/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error('Failed to submit story');
-      */
       
-      alert('Story submitted successfully! Check console for JSON payload.');
-    } catch (error) {
+      if (!response.ok) {
+        // Try to get a specific error message from the backend if possible
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.message || 'Failed to submit story to the backend.');
+      }
+      
+      setModalState({
+        isOpen: true,
+        type: 'success',
+        message: 'Story submitted successfully! Check console for JSON payload.'
+      });
+    } catch (error: any) {
       console.error('Error submitting story:', error);
-      alert('Failed to submit story. Please try again.');
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        message: error.message || 'Failed to submit story. Please try again.'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -306,7 +348,7 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="description">Description</label>
+            <label htmlFor="description">Description (Optional)</label>
             <textarea
               id="description"
               name="description"
@@ -314,7 +356,6 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
               placeholder="A short summary of the story..."
               value={metadata.description}
               onChange={handleMetadataChange}
-              required
             />
             <p className="help-text">{metadata.description.length}/200 characters</p>
           </div>
@@ -455,6 +496,23 @@ function DashboardView({ onLogout }: { onLogout: () => void }) {
           </button>
         </div>
       </form>
+
+      {modalState.isOpen && (
+        <div className="modal-overlay">
+          <div className={`modal-content ${modalState.type}`}>
+            {modalState.type === 'success' ? (
+              <CheckCircle size={56} className="modal-icon success-icon" />
+            ) : (
+              <XCircle size={56} className="modal-icon error-icon" />
+            )}
+            <h3>{modalState.type === 'success' ? 'Success!' : 'Oops! Something went wrong'}</h3>
+            <p>{modalState.message}</p>
+            <button onClick={() => setModalState({ ...modalState, isOpen: false })} className="btn btn-primary mt-4">
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
