@@ -30,12 +30,87 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Base App Containers */
 .app-container {
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  padding: 0; 
+}
+
+.login-layout {
   padding: 2rem;
+}
+
+/* Dashboard Sidebar Layout */
+.dashboard-layout {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 260px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: 1px solid var(--glass-border);
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.03);
+}
+
+.sidebar-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  color: var(--text-light);
+  text-decoration: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  transition: var(--transition);
+}
+
+.nav-item:hover {
+  background: rgba(0,0,0,0.03);
+  color: var(--text-dark);
+}
+
+.nav-item.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 123, 84, 0.3);
+}
+
+.main-content {
+  flex: 1;
+  padding: 2rem 3rem;
+  overflow-y: auto;
+  height: 100vh;
 }
 
 /* Glassmorphism Card Base */
@@ -61,6 +136,9 @@ h1 {
   background: linear-gradient(to right, var(--primary), var(--secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.login-header h1 {
   text-align: center;
 }
 
@@ -103,7 +181,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 textarea {
-  resize: vertical;
+  resize: none;
   min-height: 120px;
 }
 
@@ -154,14 +232,6 @@ textarea {
   transform: translateY(-1px);
 }
 
-.btn-primary:active {
-  background: linear-gradient(180deg, #F37000 0%, #FFAD42 100%);
-  box-shadow: 
-    inset 0 2px 4px rgba(0, 0, 0, 0.2),
-    0 2px 4px rgba(0, 0, 0, 0.1);
-  transform: translateY(1px);
-}
-
 .btn-secondary {
   background: var(--white);
   color: var(--text-dark);
@@ -197,15 +267,6 @@ textarea {
   width: 100%;
   max-width: 440px;
   margin-top: 10vh;
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.login-header p {
-  margin-bottom: 0;
 }
 
 .login-btn-container {
@@ -274,14 +335,8 @@ textarea {
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .row {
@@ -352,23 +407,71 @@ textarea {
   justify-content: flex-end;
 }
 
-.submit-container .btn {
-  padding: 1rem 3rem;
-  font-size: 1.1rem;
+/* Table Styles for List View */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: rgba(255,255,255,0.4);
+  border-radius: 12px;
+  padding: 1rem;
 }
 
-@media (max-width: 768px) {
-  .row {
-    flex-direction: column;
-    gap: 0;
-  }
-  .app-container {
-    padding: 1rem;
-  }
-  .glass-card {
-    padding: 1.5rem;
-  }
+.stories-table {
+  width: 100%;
+  border-collapse: collapse;
 }
+
+.stories-table th {
+  text-align: left;
+  padding: 1rem;
+  color: var(--text-light);
+  font-weight: 600;
+  border-bottom: 2px solid rgba(0,0,0,0.05);
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+}
+
+.stories-table td {
+  padding: 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+
+.stories-table tr:hover td {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.cover-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(0,0,0,0.05);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-small {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 8px;
+}
+
+.badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(0,0,0,0.05);
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 
 /* Image Toggle */
 .image-toggle {
@@ -433,6 +536,7 @@ input[type="file"].file-input::file-selector-button:hover {
   bottom: 0;
   background: rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -488,4 +592,74 @@ input[type="file"].file-input::file-selector-button:hover {
 @keyframes scaleUp {
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .dashboard-layout {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-border);
+    padding: 1.5rem;
+  }
+  .main-content {
+    padding: 1.5rem;
+    height: auto;
+  }
+  .row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* Full Page Loader */
+.loader-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  border: 6px solid rgba(255, 123, 84, 0.2);
+  border-bottom-color: var(--primary);
+  border-radius: 50%;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Disabled Button States */
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Refresh Spin Animation */
+.spin {
+  animation: rotation 1s linear infinite;
+}
+
+/* Smooth table row transitions */
+.stories-table tbody tr {
+  transition: opacity 0.3s ease, background-color 0.2s ease;
 }
