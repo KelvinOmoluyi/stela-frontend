@@ -5,6 +5,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebas
 import { storage, auth } from './firebase';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
+
 import './App.css'; 
 
 const queryClient = new QueryClient({
@@ -553,23 +554,56 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
     }
   };
 
+  const compressImage = (file: File, maxDim = 1920, quality = 0.8): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')),
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error('Failed to load image for compression'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const uploadFile = async (file: File, path: string): Promise<string> => {
+    let fileToUpload: File | Blob = file;
+    if (file.type.startsWith('image/')) {
+      try {
+        fileToUpload = await compressImage(file);
+      } catch (error) {
+        console.warn('Image compression failed, uploading original:', error);
+      }
+    }
     const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, file);
+    await uploadBytes(storageRef, fileToUpload);
     return await getDownloadURL(storageRef);
   };
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      let finalCoverUrl = metadata.coverImageUrl;
-      if (metadata.coverInputType === 'file' && metadata.coverImageFile) {
-        finalCoverUrl = await uploadFile(
-          metadata.coverImageFile, 
-          `covers/${Date.now()}_${metadata.coverImageFile.name}`
-        );
-      }
+      console.time('⏱️ TOTAL submission');
+      console.time('⏱️ 1. Image compression + upload');
+      // Launch all uploads in parallel (cover + chapters)
+      const coverUploadPromise = (metadata.coverInputType === 'file' && metadata.coverImageFile)
+        ? uploadFile(metadata.coverImageFile, `covers/${Date.now()}_${metadata.coverImageFile.name}`)
+        : Promise.resolve(metadata.coverImageUrl);
 
-      const processedChapters = await Promise.all(chapters.map(async (chapter, idx) => {
+      const chapterUploadPromises = chapters.map(async (chapter, idx) => {
         let finalImageUrl = chapter.imageUrl;
         if (chapter.imageInputType === 'file' && chapter.imageFile) {
           finalImageUrl = await uploadFile(
@@ -577,14 +611,20 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
             `chapters/${Date.now()}_${idx}_${chapter.imageFile.name}`
           );
         }
-        
         return {
           chapterNumber: chapter.chapterNumber,
           title: chapter.title,
           imageUrl: finalImageUrl,
           content: chapter.content
         };
-      }));
+      });
+
+      // Await all uploads simultaneously
+      const [finalCoverUrl, processedChapters] = await Promise.all([
+        coverUploadPromise,
+        Promise.all(chapterUploadPromises)
+      ]);
+      console.timeEnd('⏱️ 1. Image compression + upload');
 
       const payload = {
         title: metadata.title,
@@ -610,6 +650,8 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
         : 'https://api-f6x7qpormq-uc.a.run.app/api/stories/submit';
       const method = isEditMode ? 'PUT' : 'POST';
 
+      console.log('📦 Payload size:', JSON.stringify(payload).length, 'bytes');
+      console.time('⏱️ 2. API call');
       const response = await fetch(url, {
         method,
         headers: { 
@@ -618,6 +660,8 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
         },
         body: JSON.stringify(payload)
       });
+      console.timeEnd('⏱️ 2. API call');
+      console.timeEnd('⏱️ TOTAL submission');
       
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
