@@ -756,6 +756,7 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
                 <option value="mystery">Mystery</option>
                 <option value="heartwarming">Heartwarming</option>
                 <option value="adventure">Adventure</option>
+                <option value="sci-fi">Sci-fi</option>
               </select>
             </div>
             
