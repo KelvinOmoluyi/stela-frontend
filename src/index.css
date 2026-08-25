@@ -28,6 +28,7 @@ body {
   min-height: 100vh;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-y: scroll;
 }
 
 /* Base App Containers */
@@ -260,6 +261,24 @@ textarea {
 
 .btn-icon:hover {
   background: rgba(230, 57, 70, 0.1);
+}
+
+.btn-icon-subtle {
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: transparent;
+  color: #adb5bd;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-subtle:hover {
+  color: #495057;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 /* Login View */
@@ -662,4 +681,66 @@ input[type="file"].file-input::file-selector-button:hover {
 /* Smooth table row transitions */
 .stories-table tbody tr {
   transition: opacity 0.3s ease, background-color 0.2s ease;
+}
+
+/* Auth Toggle Segmented Control */
+.auth-toggle-container {
+  display: flex;
+  background: var(--white);
+  border-radius: 50px;
+  padding: 4px;
+  margin: 0 auto 2rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.05);
+  max-width: 300px;
+}
+
+.auth-toggle-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.75rem 1rem;
+  border-radius: 50px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-toggle-btn.active {
+  background: linear-gradient(180deg, #FFAD42 0%, #F37000 100%);
+  color: white;
+  box-shadow: 0 4px 10px rgba(243, 112, 0, 0.3);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Form Animation to prevent layout shifts */
+.login-form-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group-animate {
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.form-group-animate.hidden {
+  max-height: 0;
+  opacity: 0;
+  margin-bottom: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.form-group-animate.visible {
+  max-height: 100px;
+  opacity: 1;
+  margin-bottom: 1.5rem;
+  transform: translateY(0);
 }

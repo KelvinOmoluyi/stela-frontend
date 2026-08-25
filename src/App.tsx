@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { LogIn, LogOut, Plus, Trash2, Send, BookOpen, CheckCircle, XCircle, LayoutDashboard, Trash, Edit, RefreshCw } from 'lucide-react';
+import { LogIn, LogOut, Plus, Trash2, Send, BookOpen, CheckCircle, XCircle, LayoutDashboard, Trash, Edit, RefreshCw, Eye, EyeOff, ArrowLeft, MoreHorizontal } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { storage, auth } from './firebase';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
@@ -122,17 +122,30 @@ interface StoryListItem {
   readingTime: number;
   totalChapters: number;
   ageRange?: { min: number; max: number };
+  status?: 'pending' | 'approved' | 'rejected';
+  authorId?: string;
 }
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [view, setView] = useState<'list' | 'form'>('list');
+  const [view, setView] = useState<'list' | 'form' | 'detail'>('list');
   const [editingStoryId, setEditingStoryId] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setIsLoggedIn(!!user);
+      if (user) {
+        try {
+          const tokenResult = await user.getIdTokenResult();
+          setIsAdmin(!!tokenResult.claims.admin);
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        setIsAdmin(false);
+      }
       setAuthChecked(true);
     });
     return () => unsubscribe();
@@ -185,7 +198,8 @@ function App() {
       <main className="main-content">
         {view === 'list' && (
           <StoryList 
-            onEdit={(id) => { setEditingStoryId(id); setView('form'); }} 
+            isAdmin={isAdmin}
+            onView={(id) => { setEditingStoryId(id); setView('detail'); }} 
           />
         )}
         {view === 'form' && (
@@ -194,28 +208,46 @@ function App() {
             onCancel={() => { setView('list'); setEditingStoryId(null); }} 
           />
         )}
+        {view === 'detail' && editingStoryId && (
+          <StoryDetailView
+            storyId={editingStoryId}
+            isAdmin={isAdmin}
+            onBack={() => { setView('list'); setEditingStoryId(null); }}
+            onEdit={(id) => { setEditingStoryId(id); setView('form'); }}
+          />
+        )}
       </main>
     </div>
   );
 }
 
 function LoginView({ onLogin }: { onLogin: () => void }) {
+  const [isLoginMode, setIsLoginMode] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
+    if (email && password && (isLoginMode || name)) {
       setIsLoading(true);
       setError('');
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        if (isLoginMode) {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          if (name) {
+            await updateProfile(userCredential.user, { displayName: name });
+          }
+        }
         onLogin();
       } catch (err: any) {
-        console.error('Login error:', err);
-        setError('Invalid email or password. Please try again.');
+        console.error('Auth error:', err);
+        setError(err.message || 'Authentication failed. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -226,9 +258,41 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
     <div className="login-view glass-card">
       <div className="login-header">
         <h1>Stela Portal</h1>
-        <p>Admin login for children's reading app</p>
+        <p>{isLoginMode ? 'Login to your account' : 'Create a Writer Account'}</p>
       </div>
-      <form onSubmit={handleLogin}>
+      
+      <div className="auth-toggle-container">
+        <button 
+          className={`auth-toggle-btn ${isLoginMode ? 'active' : ''}`} 
+          onClick={() => { setIsLoginMode(true); setError(''); }}
+          type="button"
+        >
+          Login
+        </button>
+        <button 
+          className={`auth-toggle-btn ${!isLoginMode ? 'active' : ''}`} 
+          onClick={() => { setIsLoginMode(false); setError(''); }}
+          type="button"
+        >
+          Sign Up
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="login-form-wrapper">
+        <div className={`form-group-animate ${isLoginMode ? 'hidden' : 'visible'}`}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label htmlFor="name">Full Name</label>
+            <input
+              id="name"
+              type="text"
+              placeholder="e.g. Jane Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required={!isLoginMode}
+              tabIndex={isLoginMode ? -1 : 0}
+            />
+          </div>
+        </div>
         <div className="form-group">
           <label htmlFor="email">Email Address</label>
           <input
@@ -242,20 +306,44 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
         </div>
         <div className="form-group">
           <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ paddingRight: '2.5rem' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '0.75rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-light)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.2rem'
+              }}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
         {error && <div style={{ color: '#e74c3c', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
         <div className="login-btn-container">
-          <button type="submit" className="btn btn-primary" disabled={isLoading}>
+          <button type="submit" className="btn btn-primary" disabled={isLoading} style={{ width: '100%', justifyContent: 'center' }}>
             <LogIn size={20} />
-            {isLoading ? 'Logging In...' : 'Log In'}
+            {isLoading ? 'Processing...' : (isLoginMode ? 'Log In' : 'Create Account')}
           </button>
         </div>
       </form>
@@ -263,107 +351,74 @@ function LoginView({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-function StoryList({ onEdit }: { onEdit: (id: string) => void }) {
+function StoryList({ onView, isAdmin }: { onView: (id: string) => void, isAdmin: boolean }) {
   const queryClient = useQueryClient();
 
-  const [modalState, setModalState] = useState<{ isOpen: boolean, type: 'confirm' | 'success' | 'error', message: string, storyIdToDelete: string | null }>({
-    isOpen: false,
-    type: 'confirm',
-    message: '',
-    storyIdToDelete: null
-  });
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
-  const { data: stories = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['stories'],
+  const { data: stories = [], isLoading, error, refetch } = useQuery<StoryListItem[]>({
+    queryKey: ['stories', statusFilter],
     queryFn: async () => {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch('https://api-f6x7qpormq-uc.a.run.app/api/stories', {
+      let url = 'https://api-f6x7qpormq-uc.a.run.app/api/admin/stories';
+      if (isAdmin && statusFilter !== 'all') {
+        url += `?status=${statusFilter}`;
+      }
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to fetch stories');
-      return res.json() as Promise<StoryListItem[]>;
+      return res.json();
     }
   });
 
-  const requestDelete = (id: string) => {
-    setModalState({
-      isOpen: true,
-      type: 'confirm',
-      message: 'Are you sure you want to delete this story? This cannot be undone.',
-      storyIdToDelete: id
-    });
-  };
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: 'approved' | 'rejected' }) => {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/stories/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/${id}/status`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status })
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData?.error || 'Failed to delete story');
-      }
-      return id;
+      if (!res.ok) throw new Error('Failed to update status');
+      return res.json();
     },
-    onMutate: async (id: string) => {
-      // Cancel any outgoing refetches so they don't overwrite our optimistic update
-      await queryClient.cancelQueries({ queryKey: ['stories'] });
-      
-      // Snapshot the previous value
-      const previousStories = queryClient.getQueryData<StoryListItem[]>(['stories']);
-      
-      // Optimistically update to the new value
-      if (previousStories) {
-        queryClient.setQueryData<StoryListItem[]>(['stories'], old => 
-          old ? old.filter(story => story.storyId !== id) : []
-        );
-      }
-      
-      // Return a context with the snapshotted value
-      return { previousStories };
-    },
-    onError: (error: any, _id: string, context: any) => {
-      // Roll back on error
-      if (context?.previousStories) {
-        queryClient.setQueryData(['stories'], context.previousStories);
-      }
-      setModalState({
-        isOpen: true,
-        type: 'error',
-        message: error.message || 'Failed to delete story',
-        storyIdToDelete: null
-      });
-    },
-    onSettled: () => {
-      // Always refetch to ensure we're synced with the server
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stories'] });
     }
   });
 
-  const confirmDelete = () => {
-    if (!modalState.storyIdToDelete) return;
-    const id = modalState.storyIdToDelete;
-    setModalState(prev => ({ ...prev, isOpen: false }));
-    deleteMutation.mutate(id);
-  };
-
   return (
-    <div className="list-view glass-card" style={{ maxWidth: '1000px', margin: '0 auto' }}>
-      <div className="dashboard-header" style={{ marginBottom: '2rem' }}>
+    <div className="dashboard-view section-card">
+      <div className="dashboard-header">
         <div>
-          <h1 style={{ textAlign: 'left', background: 'none', WebkitBackgroundClip: 'initial', WebkitTextFillColor: 'initial', color: 'var(--text-dark)' }}>Library</h1>
+          <h1>Library</h1>
           <p>Manage your Stela stories</p>
         </div>
-        <button 
-          onClick={() => refetch()} 
-          className="btn btn-secondary" 
-          style={{ padding: '0.6rem 1rem' }}
-          disabled={deleteMutation.isPending}
-        >
-          <RefreshCw size={18} className={isLoading ? 'spin' : ''} /> Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {isAdmin && (
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              style={{ width: 'auto', padding: '0.4rem 1rem' }}
+            >
+              <option value="all">All Stories</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          )}
+          <button 
+            onClick={() => refetch()} 
+            className="btn btn-secondary" 
+            style={{ padding: '0.6rem 1rem' }}
+          >
+            <RefreshCw size={18} className={isLoading ? 'spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -380,66 +435,71 @@ function StoryList({ onEdit }: { onEdit: (id: string) => void }) {
                 <th>Cover</th>
                 <th>Title</th>
                 <th>Genre</th>
+                <th>Status</th>
                 <th>Chapters</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {stories.map(story => (
-                <tr key={story.storyId}>
-                  <td>
-                    {story.coverImageUrl ? (
-                      <img src={story.coverImageUrl} className="cover-thumb" alt="cover" />
-                    ) : (
-                      <div className="cover-thumb" style={{ display: 'flex', alignItems:'center', justifyContent:'center', color:'#aaa', fontSize:'0.7rem'}}>No Img</div>
-                    )}
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{story.title}</td>
-                  <td><span className="badge">{story.genre}</span></td>
-                  <td>{story.totalChapters || 0}</td>
-                  <td>
-                    <div className="action-buttons">
-                      <button 
-                        onClick={() => onEdit(story.storyId)} 
-                        className="btn btn-secondary btn-small" 
-                        title="Edit"
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Edit size={16} /> Edit
-                      </button>
-                      <button 
-                        onClick={() => requestDelete(story.storyId)} 
-                        className="btn btn-icon btn-small" 
-                        title="Delete"
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {stories.map(story => {
+                return (
+                  <tr key={story.storyId}>
+                    <td>
+                      {story.coverImageUrl ? (
+                        <img src={story.coverImageUrl} className="cover-thumb" alt="cover" />
+                      ) : (
+                        <div className="cover-thumb" style={{ display: 'flex', alignItems:'center', justifyContent:'center', color:'#aaa', fontSize:'0.7rem'}}>No Img</div>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{story.title}</td>
+                    <td><span className="badge">{story.genre}</span></td>
+                    <td>
+                      <span className="badge" style={{
+                        backgroundColor: story.status === 'approved' ? '#2ecc71' : story.status === 'rejected' ? '#e74c3c' : '#f39c12',
+                        color: 'white'
+                      }}>
+                        {story.status?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </td>
+                    <td>{story.totalChapters || 0}</td>
+                    <td>
+                      <div className="action-buttons">
+                        <button 
+                          onClick={() => onView(story.storyId)} 
+                          className="btn-icon-subtle" 
+                          title="View Story"
+                        >
+                          <MoreHorizontal size={20} />
+                        </button>
+                        {isAdmin && story.status === 'pending' && (
+                          <>
+                            <button 
+                              onClick={() => statusMutation.mutate({ id: story.storyId, status: 'approved' })}
+                              className="btn btn-small"
+                              style={{ backgroundColor: '#2ecc71', color: 'white', border: 'none' }}
+                              disabled={statusMutation.isPending}
+                            >
+                              Approve
+                            </button>
+                            <button 
+                              onClick={() => statusMutation.mutate({ id: story.storyId, status: 'rejected' })}
+                              className="btn btn-small"
+                              style={{ backgroundColor: '#e74c3c', color: 'white', border: 'none' }}
+                              disabled={statusMutation.isPending}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      <Modal
-        isOpen={modalState.isOpen}
-        type={modalState.type}
-        title={
-          modalState.type === 'success' ? 'Success!' 
-          : modalState.type === 'error' ? 'Oops! Something went wrong' 
-          : 'Confirm Deletion'
-        }
-        message={modalState.message}
-        onConfirm={modalState.type === 'confirm' ? confirmDelete : () => setModalState({ ...modalState, isOpen: false })}
-        onCancel={() => setModalState({ ...modalState, isOpen: false })}
-        showCancel={modalState.type === 'confirm'}
-        confirmText={modalState.type === 'confirm' ? 'Delete' : 'Continue'}
-      />
-      
-      {deleteMutation.isPending && <FullPageLoader message="Deleting story..." />}
     </div>
   );
 }
@@ -483,7 +543,7 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
     try {
       const token = await auth.currentUser?.getIdToken();
       // 1. Fetch metadata & chapter list
-      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/stories/${id}`, {
+      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to load story details');
@@ -596,11 +656,18 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error('You must be logged in to submit a story.');
+      }
+      const token = await user.getIdToken();
+      const uid = user.uid;
+
       console.time('⏱️ TOTAL submission');
       console.time('⏱️ 1. Image compression + upload');
       // Launch all uploads in parallel (cover + chapters)
       const coverUploadPromise = (metadata.coverInputType === 'file' && metadata.coverImageFile)
-        ? uploadFile(metadata.coverImageFile, `covers/${Date.now()}_${metadata.coverImageFile.name}`)
+        ? uploadFile(metadata.coverImageFile, `users/${uid}/covers/${Date.now()}_${metadata.coverImageFile.name}`)
         : Promise.resolve(metadata.coverImageUrl);
 
       const chapterUploadPromises = chapters.map(async (chapter, idx) => {
@@ -608,7 +675,7 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
         if (chapter.imageInputType === 'file' && chapter.imageFile) {
           finalImageUrl = await uploadFile(
             chapter.imageFile,
-            `chapters/${Date.now()}_${idx}_${chapter.imageFile.name}`
+            `users/${uid}/chapters/${Date.now()}_${idx}_${chapter.imageFile.name}`
           );
         }
         return {
@@ -639,15 +706,10 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
         chapters: processedChapters
       };
 
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error('You must be logged in to submit a story.');
-      }
-      const token = await user.getIdToken();
       
       const url = isEditMode 
-        ? `https://api-f6x7qpormq-uc.a.run.app/api/stories/${storyId}`
-        : 'https://api-f6x7qpormq-uc.a.run.app/api/stories/submit';
+        ? `https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/${storyId}`
+        : 'https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/submit';
       const method = isEditMode ? 'PUT' : 'POST';
 
       console.log('📦 Payload size:', JSON.stringify(payload).length, 'bytes');
@@ -975,6 +1037,143 @@ function StoryForm({ storyId, onCancel }: { storyId: string | null, onCancel: ()
       />
       
       {submitMutation.isPending && <FullPageLoader message={isEditMode ? "Saving changes..." : "Submitting story..."} />}
+    </div>
+  );
+}
+
+function StoryDetailView({ storyId, isAdmin, onBack, onEdit }: { storyId: string, isAdmin: boolean, onBack: () => void, onEdit: (id: string) => void }) {
+  const queryClient = useQueryClient();
+
+  const [modalState, setModalState] = useState<{ isOpen: boolean, type: 'confirm' | 'success' | 'error', message: string }>({
+    isOpen: false,
+    type: 'confirm',
+    message: ''
+  });
+
+  const { data: story, isLoading, error } = useQuery({
+    queryKey: ['story', storyId],
+    queryFn: async () => {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/${storyId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch story details');
+      return res.json();
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`https://api-f6x7qpormq-uc.a.run.app/api/admin/stories/${storyId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || 'Failed to delete story');
+      }
+      return storyId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stories'] });
+      setModalState({
+        isOpen: true,
+        type: 'success',
+        message: 'Story successfully deleted.'
+      });
+    },
+    onError: (error: any) => {
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        message: error.message || 'Failed to delete story'
+      });
+    }
+  });
+
+  const confirmDelete = () => {
+    setModalState(prev => ({ ...prev, isOpen: false }));
+    deleteMutation.mutate();
+  };
+
+  if (isLoading) return <FullPageLoader message="Loading story..." />;
+  if (error) return <div style={{ color: '#e74c3c', padding: '2rem', textAlign: 'center' }}>Error: {(error as Error).message}</div>;
+  if (!story) return <div style={{ padding: '2rem', textAlign: 'center' }}>Story not found</div>;
+
+  const isApproved = story.status === 'approved';
+  const canEditDelete = isAdmin || !isApproved;
+
+  return (
+    <div className="dashboard-view section-card">
+      <Modal 
+        isOpen={modalState.isOpen}
+        type={modalState.type}
+        title={modalState.type === 'confirm' ? 'Delete Story' : modalState.type === 'success' ? 'Success' : 'Error'}
+        message={modalState.message}
+        onConfirm={modalState.type === 'confirm' ? confirmDelete : () => {
+          setModalState(prev => ({ ...prev, isOpen: false }));
+          if (modalState.type === 'success') onBack();
+        }}
+        onCancel={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+        showCancel={modalState.type === 'confirm'}
+        confirmText={modalState.type === 'confirm' ? 'Delete' : 'OK'}
+      />
+      
+      {deleteMutation.isPending && <FullPageLoader message="Deleting story..." />}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+        <button onClick={onBack} className="btn btn-secondary btn-icon" style={{ borderRadius: '50%', width: '40px', height: '40px', padding: 0, color: 'var(--text-dark)' }}>
+          <ArrowLeft size={20} />
+        </button>
+        <h1 style={{ margin: 0, flex: 1, textAlign: 'left', background: 'none', WebkitBackgroundClip: 'initial', WebkitTextFillColor: 'initial', color: 'var(--text-dark)' }}>Story Details</h1>
+        {canEditDelete && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={() => onEdit(storyId)} className="btn btn-secondary">
+              <Edit size={16} /> Edit
+            </button>
+            <button onClick={() => setModalState({ isOpen: true, type: 'confirm', message: 'Are you sure you want to delete this story?' })} className="btn btn-primary" style={{ backgroundColor: '#e74c3c', border: 'none', boxShadow: 'none' }}>
+              <Trash size={16} /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="chapter-block" style={{ display: 'flex', gap: '2rem' }}>
+        {story.coverImageUrl && (
+          <img src={story.coverImageUrl} alt="Cover" style={{ width: '200px', height: '200px', objectFit: 'cover', borderRadius: '12px' }} />
+        )}
+        <div>
+          <h2>{story.title}</h2>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <span className="badge" style={{ backgroundColor: 'rgba(0,0,0,0.05)', color: 'var(--text-dark)' }}>{story.genre}</span>
+            <span className="badge" style={{
+              backgroundColor: story.status === 'approved' ? '#2ecc71' : story.status === 'rejected' ? '#e74c3c' : '#f39c12',
+              color: 'white'
+            }}>
+              {story.status?.toUpperCase() || 'UNKNOWN'}
+            </span>
+            <span className="badge" style={{ backgroundColor: 'rgba(0,0,0,0.05)', color: 'var(--text-dark)' }}>{story.readingTime} min read</span>
+            <span className="badge" style={{ backgroundColor: 'rgba(0,0,0,0.05)', color: 'var(--text-dark)' }}>Ages {story.ageRange?.min}-{story.ageRange?.max}</span>
+          </div>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{story.description}</p>
+        </div>
+      </div>
+
+      <h3 style={{ marginTop: '2rem', marginBottom: '1rem' }}>Chapters</h3>
+      {story.chapters?.map((chapter: any, idx: number) => (
+        <div key={idx} className="chapter-block" style={{ marginBottom: '1.5rem' }}>
+          <div className="chapter-header">
+            <h3>Chapter {chapter.chapterNumber}: {chapter.title}</h3>
+          </div>
+          {chapter.imageUrl && (
+            <img src={chapter.imageUrl} alt={`Chapter ${chapter.chapterNumber}`} style={{ width: '100%', maxHeight: '400px', objectFit: 'cover', borderRadius: '12px', marginBottom: '1rem' }} />
+          )}
+          <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
+            {chapter.content || chapter.rawText}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
