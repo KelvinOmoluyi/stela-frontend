@@ -281,6 +281,50 @@ textarea {
   background: rgba(0, 0, 0, 0.05);
 }
 
+/* Error Banner */
+.error-banner {
+  position: absolute;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #fdeaea;
+  border: 1px solid #f5c6c6;
+  color: #e74c3c;
+  padding: 0.875rem 1.25rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.15);
+  animation: slideDown 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 1000;
+  width: 90%;
+  max-width: 440px;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.error-banner-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  margin-left: auto;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.error-banner-close:hover { 
+  opacity: 1; 
+}
+
+@keyframes slideDown {
+  from { transform: translate(-50%, -100%); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
 /* Login View */
 .login-view {
   width: 100%;
